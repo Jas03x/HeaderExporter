@@ -5,7 +5,6 @@ from bpy_extras.io_utils import (ImportHelper, ExportHelper, orientation_helper,
 from mathutils import Matrix
 
 import os
-import struct
 
 bl_info = {
     "name": "Header Exporter",
@@ -19,19 +18,77 @@ bl_info = {
     "category": "Import-Export"
 }
 
+definitions = \
+"""
+enum { MAX_VERTICES_PER_POLYGON = 4 };
+enum { MAX_STRING_LENGTH = 64 };
+
+struct Vertex
+{
+    float position[3];
+    float normal[3];
+    float uv[2];
+};
+
+struct Polygon
+{
+    uint16_t indices[MAX_VERTICES_PER_POLYGON];
+    uint8_t index_count;
+};
+
+struct Texture
+{
+    char name[MAX_STRING_LENGTH];
+
+    uint32_t width;
+    uint32_t height;
+    uint8_t* pixels;
+};
+
+struct Mesh
+{
+    char name[MAX_STRING_LENGTH];
+
+    Vertex* vertex_array;
+    uint16_t vertex_count;
+
+    const Polygon* polygon_array;
+    uint32_t polygon_count;
+};
+
+struct Node
+{
+    char name[MAX_STRING_LENGTH];
+    float matrix[16];
+    uint16_t parent_index;
+    uint16_t mesh_index;
+};
+
+struct Scene
+{
+    Mesh* mesh_array;
+    uint16_t mesh_count;
+
+    Node* node_array;
+    uint16_t node_count;
+
+    Texture texture_array;
+    uint8_t texture_count;
+};
+"""
+
 class Vertex:
-    def __init__(self, p, n, uv, node_index):
+    def __init__(self, p, n, uv):
         self.position = tuple(p)
         self.normal = tuple(n)
         self.uv = tuple(uv)
-        self.node_index = node_index
         self.hash_value = 0
     
     def finalize(self):
-        self.hash_value = hash((self.position, self.normal, self.uv, self.node_index))
+        self.hash_value = hash((self.position, self.normal, self.uv))
 
     def __eq__(self, other):
-        return (self.position == other.position) and (self.normal == other.normal) and (self.uv == other.uv) and (self.node_index == other.node_index)
+        return (self.position == other.position) and (self.normal == other.normal) and (self.uv == other.uv)
 
     def __hash__(self):
         return self.hash_value
@@ -98,14 +155,32 @@ class Header_Exporter(bpy.types.Operator, ExportHelper):
 
     filename_ext = ".h"
 
-    def write_file(self, data):
+    def write_file(self, scene):
         f = open(self.filepath, "w")
-        f.write(struct.pack("=IIIIIIII", MDL_SIG, 1, 0, 0, 0, 0, 0, 0))
-        self.write_node_block(f, data.node_index.array)
-        self.write_bone_block(f, data.bone_index.array)
-        self.write_material_block(f, data.ambient_texture, data.diffuse_texture, data.specular_texture)
-        self.write_mesh_block(f, data.mesh_array)
-        f.write(struct.pack("=I", MDL_EOF))
+        f.write("#ifndef {}_H\n".format(os.path.basename(self.filepath).upper()))
+        f.write("{}\n".format(definitions))
+        for mesh in scene.mesh_array:
+            vertex_string = "Vertex {}_VERTICES[] = \n{{\n".format(mesh.name.upper())
+            polygon_string = "Polygon {}_POLYGONS[] = \n{{".format(mesh.name.upper())
+            for vertex in mesh.vertex_set:
+                vertex_string += "\t{{ {{ {}, {}, {} }}, {{ {}, {}, {} }}, {{ {}, {} }} }},\n".format(
+                    vertex.position[0], vertex.position[1], vertex.position[2],
+                    vertex.normal[0], vertex.normal[1], vertex.normal[2],
+                    vertex.uv[0], vertex.uv[1]
+                )
+            for polygon in mesh.polygon_array:
+                polygon_string += "\t"
+                if polygon.index_count == 3:
+                    polygon_string += "{{ {{ {}, {}, {}, 0 }}, 3 }},\n".format(polygon.index_array[0], polygon.index_array[1], polygon.index_array[2])
+                elif polygon.index_count == 4:
+                    polygon_string += "{{ {{ {}, {}, {}, {} }}, 4 }},\n".format(polygon.index_array[0], polygon.index_array[1], polygon.index_array[2], polygon.index_array[3])
+                else:
+                    raise Exception("unexpected polygon index count {}".format(polygon.index_count))
+            vertex_string += "};\n\n"
+            polygon_string += "};\n\n"
+            f.write(vertex_string)
+            f.write(polygon_string)
+        f.write("#endif")
         f.close()
 
     def process(self):
@@ -113,11 +188,13 @@ class Header_Exporter(bpy.types.Operator, ExportHelper):
 
         mesh_map = {}
 
+        for texture in bpy.data.images:
+            scene.texture_array.append(texture.filepath)
+
         for mesh in bpy.data.meshes:
             uv_array = mesh.uv_layers.active.uv
 
-            mesh = Mesh(mesh.name)
-            node_index = scene.node_index.find(mesh.name)
+            mesh_data = Mesh(mesh.name)
             for p in mesh.polygons:
                 if p.loop_total != 3 and p.loop_total != 4:
                     raise Exception("mesh has unsupported polygons (count={})".format(p.loop_total))
@@ -128,32 +205,32 @@ class Header_Exporter(bpy.types.Operator, ExportHelper):
                     v = mesh.vertices[mesh.loops[i].vertex_index]
                     vertex = None
 
-                    vertex = MDL_Vertex(v.co, n, uv_array[i].uv, node_index)
+                    vertex = Vertex(v.co, n, uv_array[i].vector)
                     vertex.finalize()
 
-                    index = mesh.vertex_map.get(vertex, -1)
+                    index = mesh_data.vertex_map.get(vertex, -1)
                     if index == -1:
-                        index = len(mesh.vertex_set)
-                        mesh.vertex_map[vertex] = index
-                        mesh.vertex_set.append(vertex)
+                        index = len(mesh_data.vertex_set)
+                        mesh_data.vertex_map[vertex] = index
+                        mesh_data.vertex_set.append(vertex)
                     polygon.index_count += 1
                     polygon.index_array.append(index)
-                mesh.polygon_array.append(polygon)
+                mesh_data.polygon_array.append(polygon)
             
             mesh_map[mesh.name] = len(scene.mesh_array)
-            scene.mesh_array.append(mesh)
+            scene.mesh_array.append(mesh_data)
         
         for _object in bpy.data.objects:
             parent = None if _object.parent is None else _object.parent.name
             scene.node_index.add(_object.name, Node(_object.name, parent, _object.matrix_local.transposed()))
-            scene.object_array.add(Object(_object.name, mesh_map[_object.name]))
+            scene.object_array.append(Object(_object.name, mesh_map.get(_object.name, -1)))
 
         return scene
 
     def execute(self, context):
         try:
-            mdl = self.process()
-            self.write_file(mdl)
+            scene = self.process()
+            self.write_file(scene)
         except Exception as error:
             self.report({"ERROR"}, str(error))
             return {"CANCELLED"}
