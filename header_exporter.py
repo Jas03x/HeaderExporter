@@ -20,6 +20,8 @@ bl_info = {
 
 definitions = \
 """
+#ifndef HEADER_DEFINITIONS
+#define HEADER_DEFINITIONS
 enum { MAX_VERTICES_PER_POLYGON = 4 };
 enum { MAX_STRING_LENGTH = 64 };
 
@@ -75,6 +77,7 @@ struct Scene
     Texture texture_array;
     uint8_t texture_count;
 };
+#endif // HEADER_DEFINITIONS
 """
 
 class Vertex:
@@ -161,13 +164,16 @@ class Header_Exporter(bpy.types.Operator, ExportHelper):
         f.write("{}\n".format(definitions))
         for mesh in scene.mesh_array:
             vertex_string = "Vertex {}_VERTICES[] = \n{{\n".format(mesh.name.upper())
-            polygon_string = "Polygon {}_POLYGONS[] = \n{{".format(mesh.name.upper())
             for vertex in mesh.vertex_set:
                 vertex_string += "\t{{ {{ {}, {}, {} }}, {{ {}, {}, {} }}, {{ {}, {} }} }},\n".format(
                     vertex.position[0], vertex.position[1], vertex.position[2],
                     vertex.normal[0], vertex.normal[1], vertex.normal[2],
                     vertex.uv[0], vertex.uv[1]
                 )
+            vertex_string += "};\n\n"
+            f.write(vertex_string)
+        for mesh in scene.mesh_array:
+            polygon_string = "Polygon {}_POLYGONS[] = \n{{\n".format(mesh.name.upper())
             for polygon in mesh.polygon_array:
                 polygon_string += "\t"
                 if polygon.index_count == 3:
@@ -176,10 +182,22 @@ class Header_Exporter(bpy.types.Operator, ExportHelper):
                     polygon_string += "{{ {{ {}, {}, {}, {} }}, 4 }},\n".format(polygon.index_array[0], polygon.index_array[1], polygon.index_array[2], polygon.index_array[3])
                 else:
                     raise Exception("unexpected polygon index count {}".format(polygon.index_count))
-            vertex_string += "};\n\n"
             polygon_string += "};\n\n"
-            f.write(vertex_string)
             f.write(polygon_string)
+        for mesh in scene.mesh_array:
+            mesh_string = "Mesh {} = \n{{\n".format(mesh.name.upper())
+            mesh_string += "\t\"{}\",\n".format(mesh.name)
+            mesh_string += "\t{}_VERTICES, sizeof({}_VERTICES),\n".format(mesh.name.upper(), mesh.name.upper())
+            mesh_string += "\t{}_POLYGONS, sizeof({}_POLYGONS)\n".format(mesh.name.upper(), mesh.name.upper())
+            mesh_string += "};\n\n"
+            f.write(mesh_string)
+
+        mesh_array_string = "Mesh MESHES[] = \n{\n"
+        for mesh in scene.mesh_array:
+            mesh_array_string += "\t{},\n".format(mesh.name.upper())
+        mesh_array_string += "};\n\n"
+        f.write(mesh_array_string)
+
         f.write("#endif")
         f.close()
 

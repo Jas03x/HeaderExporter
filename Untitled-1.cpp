@@ -1,4 +1,3 @@
-
 enum { MAX_VERTICES_PER_POLYGON = 4 };
 enum { MAX_STRING_LENGTH = 64 };
 
@@ -17,6 +16,8 @@ struct Polygon
 
 struct Texture
 {
+    char name[MAX_STRING_LENGTH];
+
     uint32_t width;
     uint32_t height;
     uint8_t* pixels;
@@ -24,6 +25,8 @@ struct Texture
 
 struct Mesh
 {
+    char name[MAX_STRING_LENGTH];
+
     Vertex* vertex_array;
     uint16_t vertex_count;
 
