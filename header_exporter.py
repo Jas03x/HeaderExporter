@@ -119,7 +119,7 @@ class Header_Exporter(bpy.types.Operator, ExportHelper):
             mesh = Mesh(mesh.name)
             node_index = scene.node_index.find(mesh.name)
             for p in mesh.polygons:
-                if p.loop_total != 3:
+                if p.loop_total != 3 and p.loop_total != 4:
                     raise Exception("mesh has unsupported polygons (count={})".format(p.loop_total))
 
                 polygon = Polygon()
