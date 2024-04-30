@@ -180,7 +180,7 @@ class Header_Exporter(bpy.types.Operator, ExportHelper):
 
         node_string = "Node NODES[] = \n{\n"
         for node in scene.node_array:
-            node_string += "\t{{ {}, {{ {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {} }}, {}, {} }}\n".format(
+            node_string += "\t{{ \"{}\", {{ {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {} }}, {}, {} }}\n".format(
                 node.name,
                 node.matrix[0][0], node.matrix[0][1], node.matrix[0][2], node.matrix[0][3],
                 node.matrix[1][0], node.matrix[1][1], node.matrix[1][2], node.matrix[1][3],
@@ -236,7 +236,7 @@ class Header_Exporter(bpy.types.Operator, ExportHelper):
         for node in bpy.data.objects:
             parent = None if node.parent is None else node.parent.name
             node_map[node.name] = len(scene.node_array)
-            scene.node_array.append(Node(node.name, node_map[node.parent.name] if node.parent != None else -1, mesh_map.get(node.name, -1), node.matrix_local.transposed()))
+            scene.node_array.append(Node(node.name, node_map[node.parent.name] if (node.parent != None) else -1, mesh_map.get(node.data.name, -1), node.matrix_local.transposed()))
 
         return scene
 
