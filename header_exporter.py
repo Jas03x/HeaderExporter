@@ -111,26 +111,6 @@ class Bone:
     def __init__(self, name, offset_matrix):
         self.name = name
         self.offset_matrix = offset_matrix
-
-class Index:
-    def __init__(self):
-        self.map = {}
-        self.array = []
-
-    def add(self, key, value):
-        if self.map.get(key) != None:
-            raise Exception("item {} already exists in index".format(key))
-        self.map[key] = len(self.array)
-        self.array.append(value)
-
-    def get(self, key):
-        return self.array[self.find(key)]
-    
-    def find(self, key):
-        index = self.map.get(key, -1)
-        if index == -1:
-            raise Exception("item {} does not exist in index".format(key))
-        return index
     
 class Mesh:
     def __init__(self, name):
@@ -139,17 +119,17 @@ class Mesh:
         self.vertex_map = {}
         self.polygon_array = []
 
-class Object:
-    def __init__(self, name, mesh_index):
+class Node:
+    def __init__(self, name, parent, mesh_index, matrix):
         self.name = name
         self.mesh_index = mesh_index
+        self.parent = parent
+        self.matrix = matrix
 
 class Scene:
     def __init__(self):
         self.mesh_array = []
-        self.object_array = []
-        self.bone_index = Index()
-        self.node_index = Index()
+        self.node_array = []
         self.texture_array = []
 
 class Header_Exporter(bpy.types.Operator, ExportHelper):
@@ -160,7 +140,7 @@ class Header_Exporter(bpy.types.Operator, ExportHelper):
 
     def write_file(self, scene):
         f = open(self.filepath, "w")
-        f.write("#ifndef {}_H\n".format(os.path.basename(self.filepath).upper()))
+        f.write("#ifndef {}_H\n".format(os.path.basename(self.filepath).upper().replace(".H", "")))
         f.write("{}\n".format(definitions))
         for mesh in scene.mesh_array:
             vertex_string = "Vertex {}_VERTICES[] = \n{{\n".format(mesh.name.upper())
@@ -198,6 +178,20 @@ class Header_Exporter(bpy.types.Operator, ExportHelper):
         mesh_array_string += "};\n\n"
         f.write(mesh_array_string)
 
+        node_string = "Node NODES[] = \n{\n"
+        for node in scene.node_array:
+            node_string += "\t{{ {}, {{ {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {} }}, {}, {} }}\n".format(
+                node.name,
+                node.matrix[0][0], node.matrix[0][1], node.matrix[0][2], node.matrix[0][3],
+                node.matrix[1][0], node.matrix[1][1], node.matrix[1][2], node.matrix[1][3],
+                node.matrix[2][0], node.matrix[2][1], node.matrix[2][2], node.matrix[2][3],
+                node.matrix[3][0], node.matrix[3][1], node.matrix[3][2], node.matrix[3][3],
+                node.parent,
+                node.mesh_index
+            )
+        node_string += "};\n\n"
+        f.write(node_string)
+
         f.write("#endif")
         f.close()
 
@@ -205,6 +199,7 @@ class Header_Exporter(bpy.types.Operator, ExportHelper):
         scene = Scene()
 
         mesh_map = {}
+        node_map = {}
 
         for texture in bpy.data.images:
             scene.texture_array.append(texture.filepath)
@@ -238,10 +233,10 @@ class Header_Exporter(bpy.types.Operator, ExportHelper):
             mesh_map[mesh.name] = len(scene.mesh_array)
             scene.mesh_array.append(mesh_data)
         
-        for _object in bpy.data.objects:
-            parent = None if _object.parent is None else _object.parent.name
-            scene.node_index.add(_object.name, Node(_object.name, parent, _object.matrix_local.transposed()))
-            scene.object_array.append(Object(_object.name, mesh_map.get(_object.name, -1)))
+        for node in bpy.data.objects:
+            parent = None if node.parent is None else node.parent.name
+            node_map[node.name] = len(scene.node_array)
+            scene.node_array.append(Node(node.name, node_map[node.parent.name] if node.parent != None else -1, mesh_map.get(node.name, -1), node.matrix_local.transposed()))
 
         return scene
 
