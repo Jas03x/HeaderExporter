@@ -126,6 +126,14 @@ class Node:
         self.parent = parent
         self.matrix = matrix
 
+class Texture:
+    def __init__(self, name, filepath):
+        self.name = name
+        self.read_texture(filepath)
+    
+    def read_texture(self, filepath):
+        f = open(filepath, "rb")
+
 class Scene:
     def __init__(self):
         self.mesh_array = []
@@ -202,7 +210,7 @@ class Header_Exporter(bpy.types.Operator, ExportHelper):
         node_map = {}
 
         for texture in bpy.data.images:
-            scene.texture_array.append(texture.filepath)
+            scene.texture_array.append(Texture(texture.name, texture.filepath))
 
         for mesh in bpy.data.meshes:
             uv_array = mesh.uv_layers.active.uv
